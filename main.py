@@ -200,7 +200,7 @@ class TradesCollector:
                 open_interest Float64 CODEC(Delta, LZ4),
                 trade_id String CODEC(LZ4)
             )
-            ENGINE = MergeTree()
+            ENGINE = ReplacingMergeTree()
             PARTITION BY toYYYYMM(toDateTime(timestamp))
             ORDER BY (trade_id, timestamp)
             """)
@@ -222,12 +222,11 @@ class TradesCollector:
                 column_names=["price", "timestamp", "size_value", "open_interest", "trade_id"],
             )
             logger.info(f"Saved {len(self.buffer)} trades for {self.asset}")
-            self.buffer.clear()          # не забываем про баг из предыдущего разбора
             self.trades_count = 0
             return True
         except Exception as e:
             logger.error(f"Error saving to DB for {self.asset}: {e}", exc_info=True)
-            # Соединение могло протухнуть (таймаут/разрыв) — пересоздаём
+
             try:
                 await self.data_store.reset_ch_client()
             except Exception as reset_err:
