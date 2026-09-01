@@ -4,8 +4,6 @@ from datetime import datetime as dt
 from zoneinfo import ZoneInfo
 from collections import deque
 from typing import Optional, List, Tuple
-from contextlib import asynccontextmanager
-
 from grpc import ssl_channel_credentials, StatusCode
 from grpc.aio import secure_channel, AioRpcError
 from clickhouse_connect import get_async_client
@@ -19,7 +17,7 @@ from finam_grpc.tradeapi.v1.marketdata.marketdata_service_pb2_grpc import Market
 
 # Настройка логирования
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     handlers=[
         logging.FileHandler("quotes_collector.log"),
@@ -369,7 +367,7 @@ async def main():
         try:
             current_hour = dt.now(ZoneInfo("Europe/Moscow")).hour
             
-            if current_hour > 7:  # Рабочее время
+            if current_hour > 6:  # Рабочее время
                 if not session_manager._is_running:
                     await session_manager.start_session()
                 await asyncio.sleep(60)  # Проверка каждую минуту
