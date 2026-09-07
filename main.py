@@ -180,8 +180,8 @@ class TradesCollector:
     def __init__(self, asset: str, data_store: DataStore) -> None:
         self.asset = asset
         self.trades_count = 0
-        self.batch_size = 10000
-        self.buffer = deque(maxlen=10000)
+        self.batch_size = 1000
+        self.buffer = deque(maxlen=1000)
         self.data_store = data_store
         self._update_trades: Optional[asyncio.Task] = None
         self._is_running = False
