@@ -156,6 +156,11 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+ch_data/
+ch_logs/
+.gitignore
+.dockerignore
+test.py
 
 # Spyder project settings
 .spyderproject

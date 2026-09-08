@@ -18,12 +18,7 @@ from finam_grpc.tradeapi.v1.marketdata.marketdata_service_pb2_grpc import Market
 # Настройка логирования
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    handlers=[
-        logging.FileHandler("quotes_collector.log"),
-        logging.StreamHandler()
-    ]
-)
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 
 logger = logging.getLogger("quotes_collector")
 
@@ -52,8 +47,8 @@ class DataStore:
             settings={
                 'async_insert': 1,
                 'wait_for_async_insert': 0,
-                'max_execution_time': 30,
-                'max_block_size': 10000,
+                'max_execution_time': 10,
+                'max_block_size': 2000,
                 'prefer_localhost_replica': 1,
                 'use_uncompressed_cache': 1,
                 'load_balancing': 'random'
@@ -220,7 +215,6 @@ class TradesCollector:
                 column_names=["price", "timestamp", "size_value", "open_interest", "trade_id"],
             )
             logger.info(f"Saved {len(self.buffer)} trades for {self.asset}")
-            self.trades_count = 0
             return True
         except Exception as e:
             logger.error(f"Error saving to DB for {self.asset}: {e}", exc_info=True)
@@ -241,22 +235,22 @@ class TradesCollector:
                 stream = stub.SubscribeLatestTrades(request, metadata=self.data_store.metadata)
                 logger.info(f"Trade stream started for {self.asset}")
                 async for msg in stream:
+                    for trade in msg.trades:
                     
-                    trade = msg.trades[0]
-                    
-                    row = (
-                        float(trade.price.value),
-                        trade.timestamp.seconds + trade.timestamp.nanos / 1e9,
-                        int(float(trade.size.value)) if trade.side == 1 else -int(float(trade.size.value)),
-                        int(float(trade.open_interest.value)),
-                        trade.trade_id
-                    )
-                    
-                    self.buffer.append(row)
-                    self.trades_count += 1
-                    
-                    if self.trades_count >= self.batch_size:
-                        await self.save_to_db()
+                        row = (
+                            float(trade.price.value),
+                            trade.timestamp.seconds + trade.timestamp.nanos / 1e9,
+                            int(float(trade.size.value)) if trade.side == 1 else -int(float(trade.size.value)),
+                            int(float(trade.open_interest.value)),
+                            trade.trade_id
+                        )
+                        
+                        self.buffer.append(row)
+                        self.trades_count += 1
+                        
+                        if self.trades_count >= self.batch_size:
+                            if await self.save_to_db():
+                                          self.trades_count = 0
 
             except AioRpcError as e:
                 if e.code() == StatusCode.RESOURCE_EXHAUSTED:
@@ -325,20 +319,25 @@ class TradingSessionManager:
         if self._is_running:
             logger.warning("Trading session already running")
             return
-            
-        self._is_running = True
-        self.data_store = DataStore()
-        await self.data_store.start_data_updates()
         
-        # Список активов для сбора
-        assets = ["SiU6@RTSX", "CRU6@RTSX", "MXU6@RTSX", "GDU6@RTSX", "BRV6@RTSX", "NGU6@RTSX", "RIU6@RTSX", "CCX6@RTSX", "PDU6@RTSX", "BTU6@RTSX"]
-        
-        for asset in assets:
-            collector = TradesCollector(asset, self.data_store)
-            await collector.start_updates()
-            self.collectors.append(collector)
+        try:    
+            self._is_running = True
+            self.data_store = DataStore()
+            await self.data_store.start_data_updates()
             
-        logger.info(f"Trading session started with {len(assets)} assets")
+            # Список активов для сбора
+            assets = ["SiU6@RTSX", "CRU6@RTSX", "MXU6@RTSX", "GDU6@RTSX", "BRV6@RTSX", "NGU6@RTSX", "RIU6@RTSX", "CCX6@RTSX", "PDU6@RTSX", "BTU6@RTSX"]
+            
+            for asset in assets:
+                collector = TradesCollector(asset, self.data_store)
+                await collector.start_updates()
+                self.collectors.append(collector)
+                
+            logger.info(f"Trading session started with {len(assets)} assets")
+        except Exception:
+            logger.error("Failed to start trading session, rolling back", exc_info=True)
+            await self.stop_session()
+            raise
         
     async def stop_session(self):
         """Остановка торговой сессии"""
